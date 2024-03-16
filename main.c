@@ -27,9 +27,9 @@
 #define SOLAR_START (65000 / SOLAR_ADC_BIT_MV)
 //#define SOLAR_START (28000 / SOLAR_ADC_BIT_MV)
 #define SOLAR_STOP (24000 / SOLAR_ADC_BIT_MV)
-#define FAN_START_TEMP (179)
 
-#define THERMAL_STOP_TEMP (189)
+#define FAN_START_TEMP (170)  // approx 40 celcius
+#define THERMAL_STOP_TEMP (180)  // approx 60 celcius
 
 #define SOLAR_VOLTAGE_ADC_CHANNEL 0
 #define HEATSINK_TEMP_ADC_CHANNEL 2
@@ -38,7 +38,6 @@
 #define LEFT_HIGH RC2
 #define RIGHT_LOW RC0
 #define RIGHT_HIGH RC1
-
 
 void tick_delay(unsigned char ticks){
     while(ticks--){

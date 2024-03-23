@@ -20,16 +20,16 @@
 #define LINE_FREQUENCY_HZ (60)
 #define TICKS_FULL_CYCLE (1000000 / LINE_FREQUENCY_HZ / TICK_PERIOD_US)
 #define TICKS_HALF_CYCLE (TICKS_FULL_CYCLE / 2)
-#define TICKS_ON_MAX ((TICKS_HALF_CYCLE * 32) / 100)
+#define TICKS_ON_MAX ((TICKS_HALF_CYCLE * 40) / 100)
 
 #define SOLAR_ADC_BIT_MV (346)
 
-#define SOLAR_START (65000 / SOLAR_ADC_BIT_MV)
+#define SOLAR_START (56000 / SOLAR_ADC_BIT_MV)
 //#define SOLAR_START (28000 / SOLAR_ADC_BIT_MV)
 #define SOLAR_STOP (24000 / SOLAR_ADC_BIT_MV)
+#define SOLAR_VOLT_SECOND_MAX (66000 / SOLAR_ADC_BIT_MV)
 
-#define FAN_START_TEMP (170)  // approx 40 celcius
-#define THERMAL_STOP_TEMP (180)  // approx 60 celcius
+#define THERMAL_STOP_TEMP (175)  // approx 50 celcius
 
 #define SOLAR_VOLTAGE_ADC_CHANNEL 0
 #define HEATSINK_TEMP_ADC_CHANNEL 2
@@ -55,7 +55,7 @@ void main(void)
     RC1 = 0;    // disable right arm high side fet
     RC2 = 0;    // disable left arm high side fet
     RC3 = 0;    // enable left arm low side fet
-    RC5 = 0;    // fan off
+    RC5 = 1;    // fan always on
     RC6 = 0;    // ac aux relay off
     RC7 = 0;    // ac main relay off
 
@@ -65,6 +65,7 @@ void main(void)
     ADCON0 |= (SOLAR_VOLTAGE_ADC_CHANNEL << 3);
     
     unsigned char on_ticks = 0;  // start with power at zero
+    unsigned char on_ticks_max = TICKS_ON_MAX / 2;
     unsigned char cycle_counter = 0;  // start with power at zero
     
     unsigned char solar_voltage = 0;
@@ -78,17 +79,9 @@ void main(void)
         GO_nDONE = 1;                // Initializes A/D conversion
         while(GO_nDONE);             // Waiting for conversion to complete
         solar_voltage = ADRES;
-        ADCON0 &= 0xC5;              // Select channel 2 - heatsink temperature
+        ADCON0 &= 0xC5;              // Select channel 2 - heat sink temperature
         ADCON0 |= (HEATSINK_TEMP_ADC_CHANNEL << 3);         
-        
-        // update fan state
-        if((solar_voltage > SOLAR_STOP) 
-                && (on_ticks > (TICKS_ON_MAX / 10)) 
-                && (heatsink_temp > FAN_START_TEMP)){
-            RC5 = 1;    // fan on
-        } else {
-            RC5 = 0;    // fan off
-        }
+       
         
         // update duty cycle every 16 ac line cycles
         cycle_counter++;
@@ -109,8 +102,15 @@ void main(void)
             on_ticks = 0;
         }
         
+        // protect against high volt.second product on transformer with no load
+        if(solar_voltage > SOLAR_VOLT_SECOND_MAX){
+            on_ticks_max = TICKS_ON_MAX / 2;
+        }  else {
+            on_ticks_max = TICKS_ON_MAX;
+        }
+        
         // duty cycle range sanity check
-        if(on_ticks > TICKS_ON_MAX) on_ticks = TICKS_ON_MAX;
+        if(on_ticks > on_ticks_max) on_ticks = on_ticks_max;
         unsigned char off_ticks = TICKS_HALF_CYCLE - on_ticks;
         
         // positive half cycle

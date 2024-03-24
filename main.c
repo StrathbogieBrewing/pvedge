@@ -5,6 +5,8 @@
 #include <stdint.h>        /* For uint8_t definition */
 #include <stdbool.h>       /* For true/false definition */
 
+#include <stdint.h>       /* For true/false definition */
+
 // CONFIG
 #pragma config FOSC = HS        // Oscillator Selection bits (HS oscillator)
 #pragma config WDTE = ON        // Watchdog Timer Enable bit (WDT enabled)
@@ -17,19 +19,21 @@
 #include <xc.h>         /* XC8 General Include File */
 
 #define TICK_PERIOD_US (100)
-#define LINE_FREQUENCY_HZ (60)
+#define LINE_FREQUENCY_HZ (50)
 #define TICKS_FULL_CYCLE (1000000 / LINE_FREQUENCY_HZ / TICK_PERIOD_US)
 #define TICKS_HALF_CYCLE (TICKS_FULL_CYCLE / 2)
-#define TICKS_ON_MAX ((TICKS_HALF_CYCLE * 40) / 100)
+#define TICKS_ON_MAX ((TICKS_HALF_CYCLE * 67) / 100)
 
 #define SOLAR_ADC_BIT_MV (346)
 
 #define SOLAR_START (56000 / SOLAR_ADC_BIT_MV)
 //#define SOLAR_START (28000 / SOLAR_ADC_BIT_MV)
 #define SOLAR_STOP (24000 / SOLAR_ADC_BIT_MV)
-#define SOLAR_VOLT_SECOND_MAX (66000 / SOLAR_ADC_BIT_MV)
 
+#define THERMAL_FAN_TEMP (170)  // approx 40 celcius
 #define THERMAL_STOP_TEMP (175)  // approx 50 celcius
+
+#define ENERGY_LIMIT (100000000UL) // approx 10 kwh per day
 
 #define SOLAR_VOLTAGE_ADC_CHANNEL 0
 #define HEATSINK_TEMP_ADC_CHANNEL 2
@@ -55,7 +59,7 @@ void main(void)
     RC1 = 0;    // disable right arm high side fet
     RC2 = 0;    // disable left arm high side fet
     RC3 = 0;    // enable left arm low side fet
-    RC5 = 1;    // fan always on
+    RC5 = 0;    // fan off
     RC6 = 0;    // ac aux relay off
     RC7 = 0;    // ac main relay off
 
@@ -64,12 +68,11 @@ void main(void)
     ADCON0 &= 0xC5;              // Select channel 0 - solar voltage
     ADCON0 |= (SOLAR_VOLTAGE_ADC_CHANNEL << 3);
     
-    unsigned char on_ticks = 0;  // start with power at zero
-    unsigned char on_ticks_max = TICKS_ON_MAX / 2;
-    unsigned char cycle_counter = 0;  // start with power at zero
-    
+    unsigned char on_ticks = 0;  // start with energy at zero
+    unsigned char cycle_counter = 0;  // start with energy at zero
     unsigned char solar_voltage = 0;
     unsigned char heatsink_temp = 0;
+    uint32_t energy = 0;
     
     while(1)
     {
@@ -81,8 +84,7 @@ void main(void)
         solar_voltage = ADRES;
         ADCON0 &= 0xC5;              // Select channel 2 - heat sink temperature
         ADCON0 |= (HEATSINK_TEMP_ADC_CHANNEL << 3);         
-       
-        
+
         // update duty cycle every 16 ac line cycles
         cycle_counter++;
         if((cycle_counter & 0x0f) == 0){
@@ -98,21 +100,25 @@ void main(void)
         }
         
         // shutdown tests
-        if((solar_voltage < SOLAR_STOP) || (heatsink_temp > THERMAL_STOP_TEMP)){
+        if((solar_voltage < SOLAR_STOP) 
+                || (heatsink_temp > THERMAL_STOP_TEMP) 
+                || (energy > ENERGY_LIMIT)){
             on_ticks = 0;
         }
         
-        // protect against high volt.second product on transformer with no load
-        if(solar_voltage > SOLAR_VOLT_SECOND_MAX){
-            on_ticks_max = TICKS_ON_MAX / 2;
-        }  else {
-            on_ticks_max = TICKS_ON_MAX;
+        // update fan state
+        if((solar_voltage > SOLAR_STOP) 
+                && (on_ticks > (TICKS_ON_MAX / 10)) 
+                && (heatsink_temp > THERMAL_FAN_TEMP)){
+            RC5 = 1;    // fan on
+        } else {
+            RC5 = 0;    // fan off
         }
         
         // duty cycle range sanity check
-        if(on_ticks > on_ticks_max) on_ticks = on_ticks_max;
+        if(on_ticks > TICKS_ON_MAX) on_ticks = TICKS_ON_MAX;
         unsigned char off_ticks = TICKS_HALF_CYCLE - on_ticks;
-        
+ 
         // positive half cycle
         if(on_ticks){ 
             LEFT_LOW = 0;    // disable left arm low side fet
@@ -145,6 +151,9 @@ void main(void)
         } else if (on_ticks > (TICKS_ON_MAX * 1) / 4){
             PORTB &= 0xf7;
         }
+        
+        // accumulate energy 
+        energy += on_ticks;
             
         // negative half cycle
         if(on_ticks){ 

@@ -26,14 +26,14 @@
 
 #define SOLAR_ADC_BIT_MV (346)
 
-#define SOLAR_START (66000 / SOLAR_ADC_BIT_MV)
+#define SOLAR_START (56000 / SOLAR_ADC_BIT_MV)
 //#define SOLAR_START (28000 / SOLAR_ADC_BIT_MV)
 #define SOLAR_STOP (24000 / SOLAR_ADC_BIT_MV)
 
 #define THERMAL_FAN_TEMP (170)  // approx 40 celcius
 #define THERMAL_STOP_TEMP (175)  // approx 50 celcius
 
-#define ENERGY_LIMIT (250000000UL) // approx 8 kwh per day @ 750 W
+#define ENERGY_LIMIT (67UL * 2UL * 50UL * 3600UL * 8UL) // 8 hours at full power 
 
 #define SOLAR_VOLTAGE_ADC_CHANNEL 0
 #define HEATSINK_TEMP_ADC_CHANNEL 2
@@ -107,10 +107,8 @@ void main(void)
         }
         
         // update fan state
-        if((solar_voltage > SOLAR_STOP) 
-                && (on_ticks > (TICKS_ON_MAX / 10)) 
-                && (heatsink_temp > THERMAL_FAN_TEMP)){
-            RC5 = 1;    // fan on
+        if(on_ticks > (TICKS_ON_MAX * 1) / 4){
+            RC5 = 1;    // fan on if at more than 25 %
         } else {
             RC5 = 0;    // fan off
         }
